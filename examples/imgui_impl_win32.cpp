@@ -15,10 +15,10 @@
 
 #include <windows.h>
 #include <XInput.h>
-#include <tchar.h>
 
 // CHANGELOG
 // (minor and older changes stripped away, please see git history for details)
+//  2019-05-11: Inputs: Don't filter value from WM_CHAR before calling AddInputCharacter().
 //  2019-01-17: Misc: Using GetForegroundWindow()+IsChild() instead of GetActiveWindow() to be compatible with windows created in a different thread or parent.
 //  2019-01-17: Inputs: Added support for mouse buttons 4 and 5 via WM_XBUTTON* messages.
 //  2019-01-15: Inputs: Added support for XInput gamepads (if ImGuiConfigFlags_NavEnableGamepad is set by user application).
@@ -163,7 +163,6 @@ void ImGui_ImplWin32_UpdateGameControllers() {
 	memset(io.NavInputs, 0, sizeof(io.NavInputs));
 	if ((io.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad) == 0)
 		return;
-
 	// Calling XInputGetState() every frame on disconnected gamepads is unfortunately too slow.
 	// Instead we refresh gamepad availability by calling XInputGetCapabilities() _only_ after receiving WM_DEVICECHANGE.
 	if (g_WantUpdateHasGamepad) {
@@ -250,75 +249,81 @@ void ImGui_ImplWin32_NewFrame() {
 // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application.
 // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application.
 // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
-// PS: In this Win32 handler, we use the capture API (GetCapture/SetCapture/ReleaseCapture) to be able to read mouse coordinations when dragging mouse outside of our window bounds.
+// PS: In this Win32 handler, we use the capture API (GetCapture/SetCapture/ReleaseCapture) to be able to read mouse coordinates when dragging mouse outside of our window bounds.
 // PS: We treat DBLCLK messages as regular mouse down messages, so this code will work on windows classes that have the CS_DBLCLKS flag set. Our own example app code doesn't set this flag.
-IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	if (ImGui::GetCurrentContext() == NULL)
-		return 0;
-
-	ImGuiIO& io = ImGui::GetIO();
-	switch (msg) {
-		case WM_LBUTTONDOWN:
-		case WM_LBUTTONDBLCLK:
-		case WM_RBUTTONDOWN:
-		case WM_RBUTTONDBLCLK:
-		case WM_MBUTTONDOWN:
-		case WM_MBUTTONDBLCLK:
-		case WM_XBUTTONDOWN:
-		case WM_XBUTTONDBLCLK: {
-			int button = 0;
-			if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK) { button = 0; }
-			if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONDBLCLK) { button = 1; }
-			if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONDBLCLK) { button = 2; }
-			if (msg == WM_XBUTTONDOWN || msg == WM_XBUTTONDBLCLK) { button = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? 3 : 4; }
-			if (!ImGui::IsAnyMouseDown() && ::GetCapture() == NULL)
-				::SetCapture(hwnd);
-			io.MouseDown[button] = true;
-			return 0;
-		}
-		case WM_LBUTTONUP:
-		case WM_RBUTTONUP:
-		case WM_MBUTTONUP:
-		case WM_XBUTTONUP: {
-			int button = 0;
-			if (msg == WM_LBUTTONUP) { button = 0; }
-			if (msg == WM_RBUTTONUP) { button = 1; }
-			if (msg == WM_MBUTTONUP) { button = 2; }
-			if (msg == WM_XBUTTONUP) { button = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? 3 : 4; }
-			io.MouseDown[button] = false;
-			if (!ImGui::IsAnyMouseDown() && ::GetCapture() == hwnd)
-				::ReleaseCapture();
-			return 0;
-		}
-		case WM_MOUSEWHEEL:
-			io.MouseWheel += (float) GET_WHEEL_DELTA_WPARAM(wParam) / (float) WHEEL_DELTA;
-			return 0;
-		case WM_MOUSEHWHEEL:
-			io.MouseWheelH += (float) GET_WHEEL_DELTA_WPARAM(wParam) / (float) WHEEL_DELTA;
-			return 0;
-		case WM_KEYDOWN:
-		case WM_SYSKEYDOWN:
-			if (wParam < 256)
-				io.KeysDown[wParam] = 1;
-			return 0;
-		case WM_KEYUP:
-		case WM_SYSKEYUP:
-			if (wParam < 256)
-				io.KeysDown[wParam] = 0;
-			return 0;
-		case WM_CHAR:
-// You can also use ToAscii()+GetKeyboardState() to retrieve characters.
-			if (wParam > 0 && wParam < 0x10000)
-				io.AddInputCharacter((unsigned short) wParam);
-			return 0;
-		case WM_SETCURSOR:
-			if (LOWORD(lParam) == HTCLIENT && ImGui_ImplWin32_UpdateMouseCursor())
-				return 1;
-			return 0;
-		case WM_DEVICECHANGE:
-			if ((UINT) wParam == DBT_DEVNODES_CHANGED)
-				g_WantUpdateHasGamepad = true;
-			return 0;
-	}
-	return 0;
+IMGUI_IMPL_API LRESULT
+ImGui_ImplWin32_WndProcHandler(HWND
+hwnd,
+UINT msg, WPARAM
+wParam,
+LPARAM lParam
+)
+{
+if (
+ImGui::GetCurrentContext()
+== NULL)
+return 0;
+    ImGuiIO& io = ImGui::GetIO();
+    switch (msg)
+    {
+    case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK:
+    case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK:
+    case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK:
+    case WM_XBUTTONDOWN: case WM_XBUTTONDBLCLK:
+    {
+        int button = 0;
+        if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK) { button = 0; }
+        if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONDBLCLK) { button = 1; }
+        if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONDBLCLK) { button = 2; }
+        if (msg == WM_XBUTTONDOWN || msg == WM_XBUTTONDBLCLK) { button = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? 3 : 4; }
+        if (!ImGui::IsAnyMouseDown() && ::GetCapture() == NULL)
+            ::SetCapture(hwnd);
+        io.MouseDown[button] = true;
+        return 0;
+    }
+    case WM_LBUTTONUP:
+    case WM_RBUTTONUP:
+    case WM_MBUTTONUP:
+    case WM_XBUTTONUP:
+    {
+        int button = 0;
+        if (msg == WM_LBUTTONUP) { button = 0; }
+        if (msg == WM_RBUTTONUP) { button = 1; }
+        if (msg == WM_MBUTTONUP) { button = 2; }
+        if (msg == WM_XBUTTONUP) { button = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? 3 : 4; }
+        io.MouseDown[button] = false;
+        if (!ImGui::IsAnyMouseDown() && ::GetCapture() == hwnd)
+            ::ReleaseCapture();
+        return 0;
+    }
+    case WM_MOUSEWHEEL:
+        io.MouseWheel += (float)GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA;
+        return 0;
+    case WM_MOUSEHWHEEL:
+        io.MouseWheelH += (float)GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA;
+        return 0;
+    case WM_KEYDOWN:
+    case WM_SYSKEYDOWN:
+        if (wParam < 256)
+            io.KeysDown[wParam] = 1;
+        return 0;
+    case WM_KEYUP:
+    case WM_SYSKEYUP:
+        if (wParam < 256)
+            io.KeysDown[wParam] = 0;
+        return 0;
+    case WM_CHAR:
+        // You can also use ToAscii()+GetKeyboardState() to retrieve characters.
+        io.AddInputCharacter((unsigned int)wParam);
+        return 0;
+    case WM_SETCURSOR:
+        if (LOWORD(lParam) == HTCLIENT && ImGui_ImplWin32_UpdateMouseCursor())
+            return 1;
+        return 0;
+    case WM_DEVICECHANGE:
+        if ((UINT)wParam == DBT_DEVNODES_CHANGED)
+            g_WantUpdateHasGamepad = true;
+        return 0;
+    }
+    return 0;
 }
